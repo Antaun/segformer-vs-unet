@@ -20,7 +20,7 @@ from dl_research.utils import write_json
 
 # Image counts as published for LoveDA; a mismatch only warns (re-verify against your copy of the release).
 EXPECTED = {"Train": {"urban": 1156, "rural": 1366}, "Val": {"urban": 677, "rural": 992},
-            "Test": {"urban": 883, "rural": 913}}
+            "Test": {"urban": 820, "rural": 976}}
 
 
 def prepare(out="data/LoveDA", raw=None, synthetic=False) -> dict:

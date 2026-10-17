@@ -39,11 +39,12 @@ python -m dl_research.prepare_dataset --raw /path/to/zips --out data/LoveDA   # 
 Expected structure (`Train/Train/...` nesting from the zips is also accepted):
 ```
 data/LoveDA/{Train,Val,Test}/{Urban,Rural}/images_png/*.png
-data/LoveDA/{Train,Val}/{Urban,Rural}/masks_png/*.png       # Test masks are not public
+data/LoveDA/{Train,Val}/{Urban,Rural}/masks_png/*.png       
+
+# Test masks are not public
 ```
 - Raw mask values: 0 no-data, 1 background, 2 building, 3 road, 4 water, 5 barren, 6 forest, 7 agriculture.
-  Training ids = raw − 1 (7 classes, background = class 0). **Raw 0 and any other value become the ignore index 255**:
-  excluded from the loss and from every metric.
+  Training ids = raw − 1 (7 classes, background = class 0). **Raw 0 and any other value become the ignore index 255**: excluded from the loss and from every metric.
 - Domain (urban/rural) comes from the directory, so domain metrics exist for every labeled split.
 - `prepare_dataset` warns if image counts differ from the published ones (these counts are recorded in the script
   from memory of the release; check them against your copy).
@@ -60,19 +61,13 @@ data/LoveDA/{Train,Val}/{Urban,Rural}/masks_png/*.png       # Test masks are not
 | Evaluation | full 1024×1024 validation images, fp32, argmax |
 
 **Label fractions.** Subsets are of whole training *images*, stratified by domain (each domain keeps `round(f·n)` images),
-seeded, and *nested* (10% ⊂ 25% ⊂ 100% for a given seed). Class balance is not controlled. Both models see the same
-subset for a given seed; different seeds draw different subsets, so seed variability includes subset variability.
+seeded, and *nested* (10% ⊂ 25% ⊂ 100% for a given seed). Class balance is not controlled. Both models see the same subset for a given seed; different seeds draw different subsets, so seed variability includes subset variability.
 The chosen image ids are saved in each run's `train_subset.json`.
 
-**LR tuning** (`python -m dl_research.tune_lr`): grid search, one run per candidate (U-Net 1e-4/3e-4/1e-3; SegFormer
-3e-5/6e-5/1e-4/3e-4), 10 epochs, 100% labels, seed 0, selected by best-checkpoint validation mIoU — validation only.
-The winner is written to `configs/tuned_lr.json` (with the whole grid) and used for all fractions. One LR for the whole
-network (no separate encoder/decoder LR); the grids are small and the single-seed tuning is noisy.
+**LR tuning** (`python -m dl_research.tune_lr`): grid search, one run per candidate (U-Net 1e-4/3e-4/1e-3; SegFormer 3e-5/6e-5/1e-4/3e-4), 10 epochs, 100% labels, seed 0, selected by best-checkpoint validation mIoU — validation only.
+The winner is written to `configs/tuned_lr.json` (with the whole grid) and used for all fractions. One LR for the whole network (no separate encoder/decoder LR); the grids are small and the single-seed tuning is noisy.
 
-**Efficiency**: parameters; GFLOPs for one 3×512×512 image (`torch.utils.flop_counter`, 1 MAC = 2 FLOPs); inference
-speed = mean of 50 forward passes after 10 warm-up passes, fp32, eval mode, batch 1, 512×512, with device
-synchronisation; training time = summed epoch wall time, **excluding validation, including data loading**. All of it is
-recorded together with device name and software versions, so numbers are comparable only on the same machine.
+**Efficiency**: parameters; GFLOPs for one 3×512×512 image (`torch.utils.flop_counter`, 1 MAC = 2 FLOPs); inference speed = mean of 50 forward passes after 10 warm-up passes, fp32, eval mode, batch 1, 512×512, with device synchronisation; training time = summed epoch wall time, **excluding validation, including data loading**. All of it is recorded together with device name and software versions, so numbers are comparable only on the same machine.
 
 ## Running
 ```bash
@@ -97,34 +92,21 @@ experiments/<model>_f<fraction>_s<seed>/
 experiments/tune/lr<value>/...      # LR-tuning runs
 results/summary.md  summary.csv  all_runs.csv  gap_vs_fraction.csv  figures/*.png
 ```
-`metrics.json`: config, environment, parameter count, efficiency, training stats and validation mIoU, per-class IoU
-and F1, pixel accuracy (macro F1 `mf1`) — overall and for urban/rural. Prediction PNGs use raw LoveDA values (1–7).
+`metrics.json`: config, environment, parameter count, efficiency, training stats and validation mIoU, per-class IoU and F1, pixel accuracy (macro F1 `mf1`) — overall and for urban/rural. Prediction PNGs use raw LoveDA values (1–7).
 `aggregate` reports mean ± sample std over seeds (n=1 is shown as such) and the SegFormer−U-Net mIoU gap paired by seed.
 
 ## Known limitations
-- **Test labels are not public.** All reported numbers are on the **validation** split, which is *also* used for LR
-  selection and best-checkpoint selection, so they are optimistically biased and not comparable to the official test
-  leaderboard. `final_epoch_val_miou` is stored to show the effect of checkpoint selection. For test numbers, run
-  `evaluate --split test` (writes predictions only) and submit them to the benchmark server; check its expected label
-  encoding first.
+- **Test labels are not public.** All reported numbers are on the **validation** split, which is *also* used for LR selection and best-checkpoint selection, so they are optimistically biased and not comparable to the official test leaderboard. `final_epoch_val_miou` is stored to show the effect of checkpoint selection. For test numbers, run `evaluate --split test` (writes predictions only) and submit them to the benchmark server; check its expected label encoding first.
 - Few seeds (default 3) give only a rough view of variability; no significance tests are included.
 - LR tuned once at 100% labels / seed 0 and reused at lower fractions.
 - Rotations are multiples of 90° only; no color/scale augmentation. Single-scale, no test-time augmentation.
 - Different hardware or library versions change timings; GPU determinism is best-effort (some CUDA ops are non-deterministic).
 - SegFormer's decode head is randomly initialised (only the encoder is ImageNet-pretrained); U-Net's decoder likewise.
-- Memory: SegFormer-B2 at batch 8 / 512² and full-image validation need a reasonably large GPU; lower `batch_size` /
-  `eval_batch_size` if needed (this changes the protocol — change it for both models).
+- Memory: SegFormer-B2 at batch 8 / 512² and full-image validation need a reasonably large GPU; lower `batch_size` / `eval_batch_size` if needed (this changes the protocol — change it for both models).
 
 ## Adding a dataset (e.g. DeepGlobe)
 Add a module that builds a `DatasetSpec` (class names, domains, label LUTs, `scan`) and `register()`s it, like
-`src/dl_research/loveda.py`, then set `dataset: <name>` in a config. Training, evaluation and aggregation use only the
-spec; DeepGlobe is intentionally not part of the primary comparison.
-
-## Notebook version
-`segformer_vs_unet.ipynb` is a single-file version of the whole pipeline (all modules inlined, no YAML files needed).
-It is **generated** from the package: edit `src/dl_research/`, then run `python scripts/build_notebook.py`. The smoke
-test cell runs by default; tuning and the full study sit behind `RUN_TUNING` / `RUN_STUDY` flags (off). On macOS/Windows
-the notebook sets `num_workers=0`, because notebook-defined classes cannot be pickled for DataLoader worker processes.
+`src/dl_research/loveda.py`, then set `dataset: <name>` in a config. Training, evaluation and aggregation use only the spec; DeepGlobe is intentionally not part of the primary comparison.
 
 ## Layout
 `src/dl_research/`: `config`, `data` (registry, subsets, dataset), `loveda`, `metrics`, `models`, `efficiency`,

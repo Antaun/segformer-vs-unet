@@ -120,6 +120,12 @@ Add a module that builds a `DatasetSpec` (class names, domains, label LUTs, `sca
 `src/dl_research/loveda.py`, then set `dataset: <name>` in a config. Training, evaluation and aggregation use only the
 spec; DeepGlobe is intentionally not part of the primary comparison.
 
+## Notebook version
+`segformer_vs_unet.ipynb` is a single-file version of the whole pipeline (all modules inlined, no YAML files needed).
+It is **generated** from the package: edit `src/dl_research/`, then run `python scripts/build_notebook.py`. The smoke
+test cell runs by default; tuning and the full study sit behind `RUN_TUNING` / `RUN_STUDY` flags (off). On macOS/Windows
+the notebook sets `num_workers=0`, because notebook-defined classes cannot be pickled for DataLoader worker processes.
+
 ## Layout
 `src/dl_research/`: `config`, `data` (registry, subsets, dataset), `loveda`, `metrics`, `models`, `efficiency`,
 `train`, `evaluate`, `tune_lr`, `aggregate`, `prepare_dataset`, `utils`. `configs/`, `scripts/`, `tests/`.

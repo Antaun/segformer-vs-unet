@@ -170,17 +170,22 @@ def make_plots(df: pd.DataFrame, out: Path) -> None:
     fig.tight_layout(); fig.savefig(fig_dir / "efficiency.png", dpi=150); plt.close(fig)
 
 
+def aggregate_runs(exp_dir="experiments", out="results") -> pd.DataFrame:
+    df = load_runs(Path(exp_dir))
+    if df.empty:
+        raise SystemExit(f"no completed runs (metrics.json) under {exp_dir}")
+    make_tables(df, Path(out))
+    make_plots(df, Path(out))
+    print(f"wrote tables and figures for {len(df)} runs to {out}/")
+    return df
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exp-dir", default="experiments")
     ap.add_argument("--out", default="results")
     args = ap.parse_args(argv)
-    df = load_runs(Path(args.exp_dir))
-    if df.empty:
-        raise SystemExit(f"no completed runs (metrics.json) under {args.exp_dir}")
-    make_tables(df, Path(args.out))
-    make_plots(df, Path(args.out))
-    print(f"wrote tables and figures for {len(df)} runs to {args.out}/")
+    aggregate_runs(args.exp_dir, args.out)
 
 
 if __name__ == "__main__":

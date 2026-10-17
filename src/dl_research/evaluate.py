@@ -60,6 +60,31 @@ def summarize(cms: dict, spec) -> dict:
     return {k: cm.summary(spec.class_names) for k, cm in cms.items()}
 
 
+def evaluate_run(run, split="val", ckpt="best", max_save=None) -> dict | None:
+    """Re-evaluate a finished run directory. `split="test"` writes predictions only (no labels -> no metrics)."""
+    run = Path(run)
+    cfg = read_config(run / "config.yaml")
+    spec = get_spec(cfg.dataset)
+    device = pick_device(cfg.device)
+    model = build_model(cfg, spec.num_classes).to(device)
+    state = torch.load(run / "checkpoints" / f"{ckpt}.pt", map_location=device)
+    model.load_state_dict(state["model"])
+
+    labeled = split == "val"
+    samples = spec.scan(prepare_data_root(cfg, spec), "Val" if labeled else "Test", labeled)
+    loader = make_eval_loader(samples, spec, cfg)
+    max_save = len(samples) if max_save is None else max_save
+    cms = evaluate_split(model, loader, spec, device, cfg.ignore_index, labeled,
+                         run / "predictions" / f"{split}_{ckpt}", max_save)
+    if not labeled:
+        print(f"wrote {min(max_save, len(samples))} test predictions (no labels -> no metrics)")
+        return None
+    out = {"split": split, "ckpt": ckpt, "epoch": state.get("epoch"), **summarize(cms, spec)}
+    write_json(run / f"eval_{split}_{ckpt}.json", out)
+    print(f"{split} mIoU: {out['overall']['miou']:.4f}  pixel acc: {out['overall']['pixel_acc']:.4f}")
+    return out
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", required=True, help="run directory containing config.yaml and checkpoints/")
@@ -67,28 +92,7 @@ def main(argv=None) -> None:
     ap.add_argument("--ckpt", default="best", choices=["best", "last"])
     ap.add_argument("--max-save", type=int, default=None, help="max predictions to write (default: all)")
     args = ap.parse_args(argv)
-
-    run = Path(args.run)
-    cfg = read_config(run / "config.yaml")
-    spec = get_spec(cfg.dataset)
-    device = pick_device(cfg.device)
-    model = build_model(cfg, spec.num_classes).to(device)
-    state = torch.load(run / "checkpoints" / f"{args.ckpt}.pt", map_location=device)
-    model.load_state_dict(state["model"])
-
-    split = "Val" if args.split == "val" else "Test"
-    labeled = args.split == "val"
-    samples = spec.scan(prepare_data_root(cfg, spec), split, labeled)
-    loader = make_eval_loader(samples, spec, cfg)
-    max_save = len(samples) if args.max_save is None else args.max_save
-    cms = evaluate_split(model, loader, spec, device, cfg.ignore_index, labeled,
-                         run / "predictions" / f"{args.split}_{args.ckpt}", max_save)
-    if labeled:
-        out = {"split": args.split, "ckpt": args.ckpt, "epoch": state.get("epoch"), **summarize(cms, spec)}
-        write_json(run / f"eval_{args.split}_{args.ckpt}.json", out)
-        print(f"{args.split} mIoU: {out['overall']['miou']:.4f}  pixel acc: {out['overall']['pixel_acc']:.4f}")
-    else:
-        print(f"wrote {min(max_save, len(samples))} test predictions (no labels -> no metrics)")
+    evaluate_run(args.run, args.split, args.ckpt, args.max_save)
 
 
 if __name__ == "__main__":

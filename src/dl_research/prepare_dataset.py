@@ -23,19 +23,14 @@ EXPECTED = {"Train": {"urban": 1156, "rural": 1366}, "Val": {"urban": 677, "rura
             "Test": {"urban": 883, "rural": 913}}
 
 
-def main(argv=None) -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", default="data/LoveDA")
-    ap.add_argument("--raw", help="folder holding Train.zip / Val.zip / Test.zip")
-    ap.add_argument("--synthetic", action="store_true")
-    args = ap.parse_args(argv)
-    spec, out = get_spec("loveda"), Path(args.out)
+def prepare(out="data/LoveDA", raw=None, synthetic=False) -> dict:
+    spec, out = get_spec("loveda"), Path(out)
 
-    if args.synthetic:
+    if synthetic:
         spec.make_synthetic(out)
-    elif args.raw:
+    elif raw:
         for split in ("Train", "Val", "Test"):
-            z = Path(args.raw) / f"{split}.zip"
+            z = Path(raw) / f"{split}.zip"
             if z.exists():
                 print(f"extracting {z} -> {out}")
                 with zipfile.ZipFile(z) as zf:
@@ -52,7 +47,7 @@ def main(argv=None) -> None:
             continue
         counts = {d: sum(s.domain == d for s in samples) for d in spec.domains}
         manifest[split] = {"counts": counts, "labeled": all(s.mask for s in samples)}
-        if not args.synthetic and counts != EXPECTED[split]:
+        if not synthetic and counts != EXPECTED[split]:
             print(f"warning: {split} counts {counts} differ from expected {EXPECTED[split]}")
         if split != "Test":  # sanity-check label values on a sample of masks
             vals = set()
@@ -66,6 +61,16 @@ def main(argv=None) -> None:
         raise SystemExit("\n".join(problems))
     write_json(out / "manifest.json", manifest)
     print(f"ok -> {out / 'manifest.json'}")
+    return manifest
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--out", default="data/LoveDA")
+    ap.add_argument("--raw", help="folder holding Train.zip / Val.zip / Test.zip")
+    ap.add_argument("--synthetic", action="store_true")
+    args = ap.parse_args(argv)
+    prepare(args.out, args.raw, args.synthetic)
 
 
 if __name__ == "__main__":

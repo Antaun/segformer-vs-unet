@@ -13,3 +13,6 @@ experiments/*
 *.ckpt
 wandb/
 runs/
+.venv/
+*.egg-info/
+.pytest_cache/

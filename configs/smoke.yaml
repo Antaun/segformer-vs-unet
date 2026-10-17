@@ -1,0 +1,17 @@
+# Tiny synthetic run: no dataset, no downloads. Used by `scripts/smoke.sh` and the tests.
+smoke: true
+pretrained: false
+encoder: resnet18
+crop_size: 64
+batch_size: 2
+eval_batch_size: 2
+num_workers: 0
+epochs: 2
+num_evals: 2
+lr: 1.0e-3
+amp: false
+device: cpu
+predictions_max_images: 2
+bench_warmup: 1
+bench_iters: 2
+out_dir: experiments/smoke

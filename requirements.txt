@@ -1,4 +1,10 @@
-torch
+# Versions below are the ones this code was developed against (see README for the full environment).
+torch>=2.2            # developed with 2.14.1
 numpy
 pyyaml
+pillow
+pandas
+matplotlib
+segmentation-models-pytorch>=0.5   # developed with 0.5.0 (pulls in timm, torchvision)
+transformers>=4.40    # developed with 5.19.0
 pytest

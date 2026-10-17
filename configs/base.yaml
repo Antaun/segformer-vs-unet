@@ -1,0 +1,45 @@
+# Shared protocol for BOTH models. Model-specific files only override `model` (and `encoder`).
+dataset: loveda
+data_root: data/LoveDA
+out_dir: experiments
+
+seed: 0
+fraction: 1.0              # fraction of training IMAGES kept (stratified by domain, nested across fractions)
+crop_size: 512
+crops_per_image: 1         # random crops drawn per training image per epoch
+batch_size: 8
+eval_batch_size: 2         # validation runs on full 1024x1024 images
+num_workers: 4
+
+epochs: 30                 # base epoch count, identical for both models
+scale_epochs_by_fraction: true   # epochs = round(epochs / fraction): keeps optimizer steps equal across fractions
+num_evals: 10              # validation passes spread over training (+ always the final epoch)
+optimizer: adamw
+lr: null                   # null -> read the validation-tuned value from tuned_lr_file
+tuned_lr_file: configs/tuned_lr.json
+weight_decay: 0.01
+warmup_frac: 0.05          # linear warmup, then cosine decay to 0
+amp: true                  # fp16 autocast on CUDA only; MPS/CPU run fp32
+
+pretrained: true           # ImageNet weights for both encoders
+encoder: resnet50          # U-Net encoder (smp)
+segformer_checkpoint: nvidia/mit-b2
+
+ignore_index: 255
+predictions_max_images: 20 # val predictions saved at the end of each run
+
+# Learning-rate tuning: short runs, validation split only (see README)
+tune_fraction: 1.0
+tune_epochs: 10
+tune_seed: 0
+lr_grids:
+  unet_r50: [1.0e-4, 3.0e-4, 1.0e-3]
+  segformer_b2: [3.0e-5, 6.0e-5, 1.0e-4, 3.0e-4]
+
+# Efficiency measurement (identical for both models)
+bench_warmup: 10
+bench_iters: 50
+bench_batch_size: 1
+
+smoke: false
+device: auto              # auto | cuda | mps | cpu

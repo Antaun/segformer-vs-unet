@@ -1,4 +1,4 @@
-# dl-research
+# segformer-vs-unet
 
 Deep learning research project. Replace this with a one-paragraph summary of the question you are studying.
 

@@ -141,7 +141,7 @@ def run(cfg: Config, force: bool = False) -> dict:
         rec = {"epoch": epoch + 1, "train_loss": torch.stack(losses).mean().item(),
                "lr": sched.get_last_lr()[0], "epoch_time_s": dt}
         if epoch + 1 in evals:
-            cms = evaluate_split(model, val_loader, spec, device, cfg.ignore_index)
+            cms = evaluate_split(model, val_loader, spec, device, cfg.ignore_index, amp=cfg.eval_amp)
             rec["val_miou"] = cms["overall"].compute()["miou"]
             if rec["val_miou"] > best_miou:
                 best_miou, best_epoch = rec["val_miou"], epoch + 1
@@ -157,7 +157,8 @@ def run(cfg: Config, force: bool = False) -> dict:
     # Final evaluation of the best (by validation mIoU) checkpoint, with domain breakdown + sample predictions.
     model.load_state_dict(torch.load(best_path, map_location=device)["model"])
     cms = evaluate_split(model, val_loader, spec, device, cfg.ignore_index,
-                         save_dir=run_dir / "predictions" / "val_best", max_save=cfg.predictions_max_images)
+                         save_dir=run_dir / "predictions" / "val_best", max_save=cfg.predictions_max_images,
+                         amp=cfg.eval_amp)
     bench_size = cfg.crop_size
     metrics = {
         "run": cfg.run_name,
@@ -177,6 +178,8 @@ def run(cfg: Config, force: bool = False) -> dict:
         "val": summarize(cms, spec),
     }
     write_json(run_dir / "metrics.json", metrics)
+    if cfg.prune_last_checkpoint:  # best.pt is kept; the run is complete so last.pt is no longer needed for resuming
+        last_path.unlink(missing_ok=True)
     print(f"[done] {cfg.run_name}: val mIoU {metrics['val']['overall']['miou']:.4f} (best epoch {best_epoch})")
     return metrics
 

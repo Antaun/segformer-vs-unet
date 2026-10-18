@@ -61,3 +61,11 @@ def test_aggregate_over_smoke_runs(tmp_path):
     aggregate.make_plots(df, tmp_path / "out")
     assert "Paired gap" in (tmp_path / "out" / "summary.md").read_text()
     assert (tmp_path / "out" / "figures" / "miou_vs_fraction.png").exists()
+
+
+def test_prune_last_checkpoint_keeps_best(tmp_path):
+    cfg = smoke_cfg(tmp_path, "unet_r50", prune_last_checkpoint="true", eval_amp="true")
+    train.run(cfg)
+    assert (cfg.run_dir / "checkpoints" / "best.pt").exists()
+    assert not (cfg.run_dir / "checkpoints" / "last.pt").exists()
+    assert train.run(cfg)["run"] == cfg.run_name  # still skipped as complete without last.pt

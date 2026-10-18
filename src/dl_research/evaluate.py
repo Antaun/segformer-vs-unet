@@ -37,7 +37,7 @@ def make_eval_loader(samples, spec, cfg: Config) -> DataLoader:
 
 
 @torch.no_grad()
-def evaluate_split(model, loader, spec, device, ignore_index=255, labeled=True, save_dir=None, max_save=0):
+def evaluate_split(model, loader, spec, device, ignore_index=255, labeled=True, save_dir=None, max_save=0, amp=False):
     """Returns {"overall": CM, "<domain>": CM, ...}. Predictions are written with RAW label values (1..7)."""
     model.eval()
     cms = {k: ConfusionMatrix(spec.num_classes, ignore_index) for k in ("overall", *spec.domains)}
@@ -45,7 +45,9 @@ def evaluate_split(model, loader, spec, device, ignore_index=255, labeled=True, 
     if save_dir:
         Path(save_dir).mkdir(parents=True, exist_ok=True)
     for batch in loader:
-        pred = model(batch["image"].to(device)).argmax(1).cpu()
+        with torch.autocast(device.type, dtype=torch.float16, enabled=amp and device.type == "cuda"):
+            logits = model(batch["image"].to(device))
+        pred = logits.argmax(1).cpu()
         for p, y, d, i in zip(pred, batch["mask"], batch["domain"].tolist(), batch["index"].tolist()):
             if labeled:
                 cms["overall"].update(p, y)
@@ -75,7 +77,7 @@ def evaluate_run(run, split="val", ckpt="best", max_save=None) -> dict | None:
     loader = make_eval_loader(samples, spec, cfg)
     max_save = len(samples) if max_save is None else max_save
     cms = evaluate_split(model, loader, spec, device, cfg.ignore_index, labeled,
-                         run / "predictions" / f"{split}_{ckpt}", max_save)
+                         run / "predictions" / f"{split}_{ckpt}", max_save, amp=cfg.eval_amp)
     if not labeled:
         print(f"wrote {min(max_save, len(samples))} test predictions (no labels -> no metrics)")
         return None

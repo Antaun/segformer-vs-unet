@@ -1,6 +1,6 @@
-"""Build segformer_vs_unet.ipynb from the package source, so the notebook and the package cannot drift.
+"""Build segformer_vs_unet.ipynb and segformer_vs_unet_colab.ipynb from the package source, so the notebook and the package cannot drift.
 
-    python scripts/build_notebook.py        # rewrites segformer_vs_unet.ipynb (unexecuted)
+    python scripts/build_notebook.py        # rewrites both notebooks (unexecuted)
 
 Each module becomes one code cell with: `from __future__` and `dl_research` imports removed (everything shares one
 namespace) and the argparse CLI (`def main` ... end of file) cut, since a notebook has no CLI.
@@ -140,7 +140,7 @@ def code(t):
     return nbf.v4.new_code_cell(t)
 
 
-def main() -> None:
+def build_local() -> None:
     nb = nbf.v4.new_notebook()
     cells = [md(INTRO), md("## 1. Setup"), code(SETUP)]
     cells.append(md("## 2. Library code\nOne cell per module of the `dl_research` package, in dependency order. Run all of them once."))
@@ -163,6 +163,210 @@ def main() -> None:
     out = ROOT / "segformer_vs_unet.ipynb"
     nbf.write(nb, out)
     print(f"wrote {out} ({len(cells)} cells)")
+
+
+
+# ----------------------------------------------------------------------------------------------------------------
+# Colab (T4) variant
+# ----------------------------------------------------------------------------------------------------------------
+C_INTRO = """# SegFormer-B2 vs U-Net (ResNet-50) on LoveDA — Google Colab (T4) edition
+
+Standalone notebook: it installs its own dependencies, downloads LoveDA, trains/evaluates both models and builds the result
+tables and figures. Generated from the `dl_research` package by `scripts/build_notebook.py`.
+
+**Before you start**
+1. *Runtime → Change runtime type → T4 GPU.*
+2. Run all cells top to bottom (the first cells install packages and mount Google Drive).
+3. Outputs (checkpoints, metrics, figures) are written to **Google Drive** (`MyDrive/segformer_vs_unet/`), so a disconnect does not
+   lose finished work. After a disconnect: reconnect and *Run all* again. Finished runs are skipped; an interrupted run resumes from
+   its last checkpoint (saved at each validation epoch).
+
+**What gets downloaded (only when you run the cells):** Python packages from PyPI; the LoveDA `Train.zip` (4.0 GB) and `Val.zip`
+(2.4 GB) from Zenodo, checksum-verified (`Test.zip` has no labels and is skipped); ImageNet-pretrained weights for ResNet-50
+(via `segmentation_models_pytorch`) and `nvidia/mit-b2` (Hugging Face Hub). LoveDA is for non-commercial academic use (the Zenodo
+record's description states CC BY-NC-SA 4.0; its metadata says CC-BY-4.0, so read the terms yourself).
+
+**No results are claimed.** Hypotheses are plans, not findings. Everything is reported on the **validation** split (test labels
+are not public), which is also used for LR tuning and checkpoint selection, so numbers are optimistically biased.
+
+**Time:** the full study is long (many GPU-hours). Cell 8 measures this GPU on a short real run and prints a projection before you
+commit; the `quick` profile (1 seed, fewer epochs) is the default and `standard` is the 3-seed, 30-epoch protocol."""
+
+C_GPU = """import subprocess, torch  # noqa: E401
+print(subprocess.run(["nvidia-smi"], capture_output=True, text=True).stdout)
+if not torch.cuda.is_available():
+    raise RuntimeError("No GPU. Use Runtime > Change runtime type > T4 GPU, reconnect, and run again.")
+print(torch.cuda.get_device_name(0), "| torch", torch.__version__)"""
+
+C_INSTALL = """# If Colab asks you to restart the session after this cell, do so and continue from the next cell.
+%pip install -q "segmentation-models-pytorch==0.5.0" "timm>=1.0" "transformers>=4.40" pyyaml pillow pandas matplotlib"""
+
+C_IMPORTS = """import argparse, copy, hashlib, json, math, os, platform, random, shutil, subprocess, sys, time, zipfile  # noqa: E401
+import numpy as np, torch  # noqa: E401
+import importlib.metadata as md_
+print({p: md_.version(p) for p in ("segmentation-models-pytorch", "timm", "transformers")}, "numpy", np.__version__)"""
+
+C_DRIVE = """# Persist everything on Google Drive; fall back to the (temporary!) Colab disk if Drive is not mounted.
+from pathlib import Path
+try:
+    from google.colab import drive
+    drive.mount("/content/drive")
+    BASE = Path("/content/drive/MyDrive/segformer_vs_unet")
+except Exception as e:  # noqa: BLE001
+    print("Drive not mounted -> outputs go to /content and are LOST when the runtime resets:", e)
+    BASE = Path("/content/segformer_vs_unet_outputs")
+BASE.mkdir(parents=True, exist_ok=True)
+print("outputs:", BASE)"""
+
+C_SETTINGS = """from dataclasses import replace
+
+PROFILE = "quick"     # "quick": 1 seed, 10 base epochs | "standard": seeds 0-2, 30 base epochs (the README protocol)
+PROFILES = {
+    "quick":    dict(epochs=10, tune_epochs=3,  num_evals=3, seeds=[0]),
+    "standard": dict(epochs=30, tune_epochs=10, num_evals=5, seeds=[0, 1, 2]),
+}
+P = PROFILES[PROFILE]
+DATA_ROOT = "/content/data/LoveDA"      # local disk (fast); re-downloaded if the runtime resets
+RESULTS_DIR = BASE / f"results_{PROFILE}"
+
+cfg = build_config({
+    "data_root": DATA_ROOT,
+    "out_dir": str(BASE / f"experiments_{PROFILE}"),
+    "tuned_lr_file": str(BASE / f"tuned_lr_{PROFILE}.json"),
+    "num_workers": 2,                    # Colab has 2 vCPUs
+    "batch_size": 8, "eval_batch_size": 2,   # lower batch_size (for BOTH models) if you hit CUDA OOM
+    "amp": True, "eval_amp": True,       # fp16 autocast for training and validation; efficiency benchmark stays fp32
+    "prune_last_checkpoint": True,       # keep Drive usage small: only best.pt is kept for finished runs
+    "epochs": P["epochs"], "tune_epochs": P["tune_epochs"], "num_evals": P["num_evals"],
+    "lr_grids": {"unet_r50": [1e-4, 3e-4, 1e-3], "segformer_b2": [3e-5, 6e-5, 1e-4, 3e-4]},
+})
+MODELS, SEEDS, FRACTIONS = ["unet_r50", "segformer_b2"], P["seeds"], [1.0, 0.25, 0.1]
+print(PROFILE, P)"""
+
+C_SMOKE = """# 1) Synthetic-data check of the whole pipeline on the GPU (random weights, no dataset, no downloads, ~1-2 min).
+RUN_SMOKE = True
+if RUN_SMOKE:
+    smoke = replace(cfg, smoke=True, pretrained=False, encoder="resnet18", crop_size=64, batch_size=2,
+                    eval_batch_size=2, num_workers=0, epochs=2, num_evals=2, lr=1e-3, device="cuda",
+                    predictions_max_images=2, bench_warmup=1, bench_iters=2, out_dir="/content/smoke").validate()
+    for m in MODELS:
+        run(replace(smoke, model=m))
+    print("smoke test passed (metrics from synthetic data are meaningless)")"""
+
+C_DATASET = """# 2) LoveDA -> DATA_ROOT. Zenodo: official files, MD5-verified, no account needed (~6.4 GB for Train+Val).
+SOURCE = "zenodo"      # "zenodo" | "kaggle" (needs KAGGLE_USERNAME / KAGGLE_KEY in Colab Secrets)
+if SOURCE == "zenodo":
+    prepare(out=DATA_ROOT, download=True, splits=("Train", "Val"))     # skips parts that are already present
+else:
+    from google.colab import userdata
+    os.environ["KAGGLE_USERNAME"], os.environ["KAGGLE_KEY"] = userdata.get("KAGGLE_USERNAME"), userdata.get("KAGGLE_KEY")
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "kaggle"], check=True)
+    if not Path(DATA_ROOT, "Train").exists():
+        subprocess.run(["kaggle", "datasets", "download", "-d", "mohammedjaveed/loveda-dataset", "-p", "/content/kaggle_raw", "--unzip"], check=True)
+        organize("/content/kaggle_raw", DATA_ROOT)
+        shutil.rmtree("/content/kaggle_raw", ignore_errors=True)
+    prepare(out=DATA_ROOT, splits=("Train", "Val"))"""
+
+C_CHECK = """# 3) Short REAL run per model (1 epoch, 10% labels, fixed LR): verifies weight downloads + the real-data path, and times this GPU.
+RUN_PIPELINE_CHECK = True
+if RUN_PIPELINE_CHECK:
+    spec = get_spec(cfg.dataset)
+    train_all = spec.scan(DATA_ROOT, "Train", True)
+    check = {}
+    for m in MODELS:
+        c = replace(cfg, model=m, fraction=0.1, epochs=1, scale_epochs_by_fraction=False, num_evals=1,
+                    lr=cfg.lr_grids[m][1], out_dir=str(BASE / "pipeline_check")).validate()
+        check[m] = run(c)
+
+    def steps(frac, epochs_cfg):
+        n = len(select_fraction(train_all, frac, 0)) * cfg.crops_per_image
+        return epochs_cfg.total_epochs * (n // cfg.batch_size)
+
+    print("\\nProjection from the measured speed on this GPU (training time only; real runs also pay for validation):")
+    total_h = 0.0
+    for m in MODELS:
+        t = check[m]["training"]
+        s_per_step = t["train_time_s"] / t["total_steps"]
+        val_s = max(0.0, t["wall_time_this_session_s"] - t["train_time_s"]) / 2   # rough: ~2 validation passes + benchmark
+        study_steps = len(SEEDS) * sum(steps(f, replace(cfg, fraction=f)) for f in FRACTIONS)
+        tune_steps = sum(replace(cfg, fraction=1.0, epochs=cfg.tune_epochs, scale_epochs_by_fraction=False).total_epochs
+                         * (len(train_all) * cfg.crops_per_image // cfg.batch_size) for _ in cfg.lr_grids[m])
+        runs = len(SEEDS) * len(FRACTIONS)
+        h = ((study_steps + tune_steps) * s_per_step + (runs * cfg.num_evals + len(cfg.lr_grids[m])) * val_s) / 3600
+        total_h += h
+        print(f"  {m}: {s_per_step:.2f} s/step, ~{val_s:.0f} s/validation pass -> ~{h:.1f} h ({study_steps} study steps + {tune_steps} tuning steps)")
+    print(f"  total ~{total_h:.1f} GPU-hours (rough; excludes data-loading stalls beyond the 1-epoch sample)")"""
+
+C_TUNE = """# 4) Learning-rate tuning on the validation split only -> tuned_lr_<profile>.json on Drive (re-running skips finished runs).
+RUN_TUNING = True
+if RUN_TUNING:
+    tuned = tune(cfg, MODELS)
+    print(json.dumps({m: {"lr": t["lr"], "grid_val_miou": t["grid_val_miou"]} for m, t in tuned.items()}, indent=1))"""
+
+C_STUDY = """# 5) The study: models x fractions x seeds. Resumable: after a disconnect just Run all again.
+RUN_STUDY = True
+if RUN_STUDY:
+    jobs = [(seed, frac, m) for seed in SEEDS for frac in FRACTIONS for m in MODELS]
+    for k, (seed, frac, m) in enumerate(jobs, 1):
+        print(f"\\n=== run {k}/{len(jobs)}: {m} fraction={frac:g} seed={seed} ===")
+        run(replace(cfg, model=m, fraction=frac, seed=seed))"""
+
+C_AGG = """# 6) Tables and figures from completed runs (nothing is concluded automatically).
+from IPython.display import Image as IPImage, Markdown, display
+
+if any(Path(cfg.out_dir).glob("*/metrics.json")):
+    df = aggregate_runs(cfg.out_dir, str(RESULTS_DIR))
+    display(Markdown((RESULTS_DIR / "summary.md").read_text()))
+    for fig in sorted((RESULTS_DIR / "figures").glob("*.png")):
+        display(IPImage(filename=str(fig)))
+else:
+    print("No completed study runs yet.")"""
+
+C_EXPORT = """# 7) Optional: download the tables/figures to your computer (they are also on Drive).
+try:
+    from google.colab import files
+    shutil.make_archive("/content/results", "zip", RESULTS_DIR)
+    files.download("/content/results.zip")
+except Exception as e:  # noqa: BLE001
+    print("skipped:", e)"""
+
+
+def colab_code_ok(src: str) -> None:
+    """Parse-check a cell after neutralising IPython magics."""
+    ast.parse("\n".join("pass" if ln.lstrip().startswith(("%", "!")) else ln for ln in src.splitlines()))
+
+
+def build_colab() -> None:
+    nb = nbf.v4.new_notebook()
+    cells = [
+        md(C_INTRO),
+        md("## 1. Environment\nChecks for the T4, installs dependencies, mounts Drive."), code(C_GPU), code(C_INSTALL), code(C_IMPORTS), code(C_DRIVE),
+        md("## 2. Library code\nOne cell per module of the `dl_research` package, in dependency order. Run all of them once."),
+    ]
+    for name, title, blurb in MODULES:
+        cells += [md(f"### {title}  \n{blurb}"), code(clean(name))]
+    cells += [
+        md("## 3. Settings\nPick `PROFILE` here. Everything is shared by both models; only `model` changes between runs."), code(C_SETTINGS),
+        md("## 4. Pipeline checks"), code(C_SMOKE), code(C_DATASET), code(C_CHECK),
+        md("## 5. Learning-rate tuning (validation only)"), code(C_TUNE),
+        md("## 6. Full study"), code(C_STUDY),
+        md("## 7. Results"), code(C_AGG), code(C_EXPORT),
+    ]
+    for c in cells:
+        if c.cell_type == "code":
+            colab_code_ok(c.source)
+    nb.cells = cells
+    nb.metadata["kernelspec"] = {"display_name": "Python 3", "language": "python", "name": "python3"}
+    nb.metadata["accelerator"] = "GPU"
+    nb.metadata["colab"] = {"provenance": [], "gpuType": "T4"}
+    out = ROOT / "segformer_vs_unet_colab.ipynb"
+    nbf.write(nb, out)
+    print(f"wrote {out} ({len(cells)} cells)")
+
+
+def main() -> None:
+    build_local()
+    build_colab()
 
 
 if __name__ == "__main__":

@@ -33,6 +33,8 @@ class Config:
     weight_decay: float = 0.01
     warmup_frac: float = 0.05
     amp: bool = True
+    eval_amp: bool = False            # fp16 autocast during validation (CUDA only); same for both models
+    prune_last_checkpoint: bool = False  # delete checkpoints/last.pt once a run is complete (saves disk)
     pretrained: bool = True
     encoder: str = "resnet50"
     segformer_checkpoint: str = "nvidia/mit-b2"

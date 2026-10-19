@@ -1,4 +1,4 @@
-# segformer-vs-unet
+# SegFormer vs U-Net
 
 A reproducible comparison of **U-Net with a ResNet-50 encoder** (`segmentation_models_pytorch`) and
 **SegFormer-B2 / MiT-B2** (Hugging Face Transformers) for semantic segmentation on **LoveDA** (7 classes incl.

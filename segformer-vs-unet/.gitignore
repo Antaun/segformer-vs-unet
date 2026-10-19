@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.DS_Store
+# data, checkpoints and run outputs stay out of git
+data/*
+!data/.gitkeep
+experiments/*
+!experiments/.gitkeep
+*.pt
+*.pth
+*.ckpt
+wandb/
+runs/

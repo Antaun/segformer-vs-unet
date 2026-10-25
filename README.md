@@ -154,6 +154,12 @@ python app/demo.py --unet-ckpt experiments/unet_r50_f1.0_s0/checkpoints/best.pt 
                    --examples data/LoveDA/Val/Urban/images_png --share
 python app/demo.py --smoke     # tiny random models: only checks that the UI starts (predictions are meaningless)
 ```
+<p align="center"><img src="docs/screenshots/01_header_and_input.png" width="90%" alt="Demo: header and photo input"></p>
+<p align="center"><img src="docs/screenshots/03_segmentation_maps.png" width="90%" alt="Demo: U-Net and SegFormer-B2 segmentation maps and where they disagree"></p>
+<p align="center"><img src="docs/screenshots/04_comparison_summary.png" width="90%" alt="Demo: plain-language summary and class share"></p>
+<p align="center"><img src="docs/screenshots/05_big_experiment.png" width="90%" alt="Demo: validation mIoU by amount of labelled data"></p>
+<p align="center"><sub>The demo on a LoveDA validation tile: both models' predictions, the pixels where they disagree, and the study's results. More screenshots are in <code>docs/screenshots/</code>.</sub></p>
+
 Checkpoints are the `best.pt` files written by `dl_research.train`. In the Colab study they are on Google Drive
 (`MyDrive/segformer_vs_unet/`), so run the demo from the notebook or copy the two files locally. The app only reads
 checkpoints; it does not train or download the dataset.

@@ -143,6 +143,21 @@ also used for LR tuning and checkpoint selection, so the reported performance ma
 seeds and does not include significance tests. Efficiency measurements are hardware-specific. The full per-class
 metrics, additional scores, and figures are recorded in the notebook output.
 
+## Interactive demo (Gradio)
+`app/demo.py` loads the two trained checkpoints and compares them on any satellite image: side-by-side segmentation maps,
+a map of where the models disagree, per-class pixel share, an optional score against a LoveDA mask, and a
+plain-language mode for non-specialists.
+```bash
+pip install -r requirements.txt && pip install -r app/requirements.txt && pip install -e . --no-deps
+python app/demo.py --unet-ckpt experiments/unet_r50_f1.0_s0/checkpoints/best.pt \
+                   --segformer-ckpt experiments/segformer_b2_f1.0_s0/checkpoints/best.pt \
+                   --examples data/LoveDA/Val/Urban/images_png --share
+python app/demo.py --smoke     # tiny random models: only checks that the UI starts (predictions are meaningless)
+```
+Checkpoints are the `best.pt` files written by `dl_research.train`. In the Colab study they are on Google Drive
+(`MyDrive/segformer_vs_unet/`), so run the demo from the notebook or copy the two files locally. The app only reads
+checkpoints; it does not train or download the dataset.
+
 ## Known limitations
 - **Test labels are not public.** All reported numbers are on the **validation** split, which is *also* used for LR selection and best-checkpoint selection, so they are optimistically biased and not comparable to the official test leaderboard. `final_epoch_val_miou` is stored to show the effect of checkpoint selection. For test numbers, run `evaluate --split test` (writes predictions only) and submit them to the benchmark server; check its expected label encoding first.
 - Few seeds (default 3) give only a rough view of variability; no significance tests are included.

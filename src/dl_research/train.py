@@ -11,8 +11,10 @@ import argparse
 import json
 import math
 import shutil
+import tempfile
 import time
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -149,9 +151,12 @@ def run(cfg: Config, force: bool = False) -> dict:
         history.append(rec)
         print(f"[{cfg.run_name}] " + " ".join(f"{k}={v:.4g}" if isinstance(v, float) else f"{k}={v}" for k, v in rec.items()))
         if epoch + 1 in evals:
+            local_ck = Path(tempfile.gettempdir()) / f"{run_dir.name}_last.pt"
             torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
                         "scaler": scaler.state_dict(), "epoch": epoch + 1, "best_miou": best_miou,
-                        "best_epoch": best_epoch, "train_time": train_time, "history": history}, last_path)
+                        "best_epoch": best_epoch, "train_time": train_time, "history": history}, local_ck)
+            # Stage locally, then copy: a stalled Drive write must not leave a truncated last.pt.
+            shutil.copyfile(local_ck, last_path.with_suffix(".tmp")); last_path.with_suffix(".tmp").replace(last_path)
     (run_dir / "log.jsonl").write_text("".join(json.dumps(h) + "\n" for h in history))
 
     # Final evaluation of the best (by validation mIoU) checkpoint, with domain breakdown + sample predictions.

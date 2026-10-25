@@ -45,13 +45,16 @@ def md5sum(path, chunk: int = 1 << 24) -> str:
 
 
 def download_file(url: str, dest, md5: str) -> None:
-    """Resumable download with curl, then MD5 verification. A complete, valid file is not downloaded again."""
+    """Resume and retry interrupted curl transfers, then verify the download with MD5."""
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and md5sum(dest) == md5:
         print(f"[ok] {dest.name} already downloaded and verified")
         return
-    subprocess.run(["curl", "-L", "--fail", "--retry", "5", "-C", "-", "-o", str(dest), url], check=True)
+    subprocess.run(
+        ["curl", "-L", "--fail", "--retry", "5", "--retry-all-errors", "-C", "-", "-o", str(dest), url],
+        check=True,
+    )
     if md5sum(dest) != md5:
         raise RuntimeError(f"MD5 mismatch for {dest}; delete it and retry")
     print(f"[ok] {dest.name} downloaded and verified")

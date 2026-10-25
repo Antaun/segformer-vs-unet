@@ -1,0 +1,1 @@
+gradio>=4.40   # tested with 6.30

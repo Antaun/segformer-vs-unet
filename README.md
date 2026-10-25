@@ -114,11 +114,18 @@ the three seeds.
 | 25% | 0.5055 ± 0.0100 | 0.4731 ± 0.0035 | +0.0324 ± 0.0066 |
 | 10% | 0.5110 ± 0.0080 | 0.4728 ± 0.0090 | +0.0382 ± 0.0132 |
 
+<p align="center"><img src="docs/figures/miou_by_fraction.png" width="48%" alt="mIoU by label fraction">
+<img src="docs/figures/gap_by_fraction.png" width="48%" alt="Paired gap by label fraction"></p>
+<p align="center"><sub>Error bars: sample standard deviation over 3 seeds. SegFormer-B2 kept almost all of its accuracy with 10% of the labels; U-Net dropped about three points.</sub></p>
+
 | Training labels | SegFormer urban | U-Net urban | SegFormer rural | U-Net rural |
 |---:|---:|---:|---:|---:|
 | 100% | 0.5753 ± 0.0008 | 0.5365 ± 0.0170 | 0.4022 ± 0.0067 | 0.4382 ± 0.0289 |
 | 25% | 0.5424 ± 0.0055 | 0.5276 ± 0.0050 | 0.4283 ± 0.0174 | 0.3953 ± 0.0041 |
 | 10% | 0.5378 ± 0.0106 | 0.5081 ± 0.0057 | 0.4486 ± 0.0138 | 0.4027 ± 0.0096 |
+
+<p align="center"><img src="docs/figures/urban_vs_rural.png" width="85%" alt="Urban vs rural mIoU"></p>
+<p align="center"><sub>U-Net led in rural scenes only with the full training set; SegFormer-B2 led everywhere else.</sub></p>
 
 Efficiency at 100% labels, averaged across seeds, was measured on a Tesla T4:
 
@@ -126,6 +133,10 @@ Efficiency at 100% labels, averaged across seeds, was measured on a Tesla T4:
 |---|---:|---:|---:|---:|
 | SegFormer-B2 | 27.352 | 121.077 | 57.477 | 4765.857 |
 | U-Net (ResNet-50) | 32.522 | 85.513 | 49.720 | 4440.952 |
+
+<p align="center"><img src="docs/figures/efficiency.png" width="90%" alt="Efficiency comparison"></p>
+
+The figures in `docs/figures/` are regenerated from these tables with `python scripts/make_readme_figures.py`.
 
 These results are validation metrics, not test-set scores. LoveDA test labels are not public; the validation split was
 also used for LR tuning and checkpoint selection, so the reported performance may be optimistic. The study uses three

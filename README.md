@@ -4,8 +4,8 @@ A reproducible comparison of **U-Net with a ResNet-50 encoder** (`segmentation_m
 **SegFormer-B2 / MiT-B2** (Hugging Face Transformers) for semantic segmentation on **LoveDA** (7 classes incl.
 background; urban and rural domains).
 
-> **Status: code only, no experiments have been run yet.** This repository contains no measured results. Everything
-> under "Hypotheses" is a plan, not a finding. Results appear only in `results/` after you run the pipeline.
+> **Status:** the standard Colab study has completed. Its recorded results are summarized below and included in
+> `segformer_vs_unet_colab_v2.ipynb`. Running the local pipeline writes results to `results/`.
 
 ## Research questions
 1. Under one shared protocol, how do the two models compare in mIoU?
@@ -13,10 +13,11 @@ background; urban and rural domains).
 3. Does the relative performance differ between the urban and rural domains?
 4. How do parameters, FLOPs, training time and inference speed relate to segmentation quality?
 
-### Hypotheses (planned, unverified)
-These are expectations to be tested, not results: (H1) the pretrained transformer encoder may help more when labels are
-scarce; (H2) domain shift between urban and rural may affect the two models differently; (H3) the models differ
-substantially in compute cost. Any of these may turn out false.
+### Findings
+In the standard Colab run, SegFormer-B2 achieved higher overall validation mIoU at all three training-label fractions.
+The advantage was largest with fewer labels. The domain comparison was mixed: U-Net was stronger on the full-data rural
+split, while SegFormer-B2 led on urban scenes and at both reduced fractions in both domains. See [Results](#results)
+for the measured values and limitations.
 
 ## Setup
 ```bash
@@ -100,6 +101,36 @@ results/summary.md  summary.csv  all_runs.csv  gap_vs_fraction.csv  figures/*.pn
 ```
 `metrics.json`: config, environment, parameter count, efficiency, training stats and validation mIoU, per-class IoU and F1, pixel accuracy (macro F1 `mf1`) — overall and for urban/rural. Prediction PNGs use raw LoveDA values (1–7).
 `aggregate` reports mean ± sample std over seeds (n=1 is shown as such) and the SegFormer−U-Net mIoU gap paired by seed.
+
+## Results
+The following results are from the `standard` profile in `segformer_vs_unet_colab_v2.ipynb`: 18 completed runs
+(2 models × 3 fractions × 3 seeds), 30 base epochs with epochs scaled by the inverse label fraction, and LR tuning
+on the validation split. Values are validation mean IoU (mIoU), reported as mean ± sample standard deviation across
+the three seeds.
+
+| Training labels | SegFormer-B2 | U-Net (ResNet-50) | Paired mIoU gap (SegFormer − U-Net) |
+|---:|---:|---:|---:|
+| 100% | 0.5125 ± 0.0032 | 0.5037 ± 0.0069 | +0.0088 ± 0.0037 |
+| 25% | 0.5055 ± 0.0100 | 0.4731 ± 0.0035 | +0.0324 ± 0.0066 |
+| 10% | 0.5110 ± 0.0080 | 0.4728 ± 0.0090 | +0.0382 ± 0.0132 |
+
+| Training labels | SegFormer urban | U-Net urban | SegFormer rural | U-Net rural |
+|---:|---:|---:|---:|---:|
+| 100% | 0.5753 ± 0.0008 | 0.5365 ± 0.0170 | 0.4022 ± 0.0067 | 0.4382 ± 0.0289 |
+| 25% | 0.5424 ± 0.0055 | 0.5276 ± 0.0050 | 0.4283 ± 0.0174 | 0.3953 ± 0.0041 |
+| 10% | 0.5378 ± 0.0106 | 0.5081 ± 0.0057 | 0.4486 ± 0.0138 | 0.4027 ± 0.0096 |
+
+Efficiency at 100% labels, averaged across seeds, was measured on a Tesla T4:
+
+| Model | Parameters (M) | GFLOPs / 512² image | Inference (ms / image) | Training time (s) |
+|---|---:|---:|---:|---:|
+| SegFormer-B2 | 27.352 | 121.077 | 57.477 | 4765.857 |
+| U-Net (ResNet-50) | 32.522 | 85.513 | 49.720 | 4440.952 |
+
+These results are validation metrics, not test-set scores. LoveDA test labels are not public; the validation split was
+also used for LR tuning and checkpoint selection, so the reported performance may be optimistic. The study uses three
+seeds and does not include significance tests. Efficiency measurements are hardware-specific. The full per-class
+metrics, additional scores, and figures are recorded in the notebook output.
 
 ## Known limitations
 - **Test labels are not public.** All reported numbers are on the **validation** split, which is *also* used for LR selection and best-checkpoint selection, so they are optimistically biased and not comparable to the official test leaderboard. `final_epoch_val_miou` is stored to show the effect of checkpoint selection. For test numbers, run `evaluate --split test` (writes predictions only) and submit them to the benchmark server; check its expected label encoding first.

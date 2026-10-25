@@ -32,6 +32,22 @@ def test_download_file_skips_valid_existing_file(tmp_path):
     pd_.download_file("http://invalid.invalid/never-called", f, hashlib.md5(b"hello").hexdigest())  # would raise if curl ran
 
 
+def test_download_file_retries_interrupted_transfers(tmp_path, monkeypatch):
+    f = tmp_path / "x.zip"
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        f.write_bytes(b"hello")
+
+    monkeypatch.setattr(pd_.subprocess, "run", fake_run)
+    pd_.download_file("https://example.invalid/x.zip", f, hashlib.md5(b"hello").hexdigest())
+
+    assert commands[0][commands[0].index("--retry") + 1] == "5"
+    assert "--retry-all-errors" in commands[0]
+    assert commands[0][commands[0].index("-C") + 1] == "-"
+
+
 def test_download_file_rejects_checksum_mismatch(tmp_path, monkeypatch):
     f = tmp_path / "x.zip"
     monkeypatch.setattr(pd_.subprocess, "run", lambda *a, **k: f.write_bytes(b"corrupt"))

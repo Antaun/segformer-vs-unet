@@ -4,6 +4,8 @@ A reproducible comparison of **U-Net with a ResNet-50 encoder** (`segmentation_m
 **SegFormer-B2 / MiT-B2** (Hugging Face Transformers) for semantic segmentation on **LoveDA** (7 classes incl.
 background; urban and rural domains).
 
+> **Live demo:** try both models in your browser at [https://antaunbobby-landcover-detective.hf.space](https://antaunbobby-landcover-detective.hf.space) (Hugging Face Space; it may take about a minute to wake up if idle).
+>
 > **Status:** the standard Colab study has completed. Its recorded results are summarized below and included in
 > `segformer_vs_unet_colab_v2.ipynb`. Running the local pipeline writes results to `results/`.
 
@@ -144,6 +146,8 @@ seeds and does not include significance tests. Efficiency measurements are hardw
 metrics, additional scores, and figures are recorded in the notebook output.
 
 ## Interactive demo (Gradio)
+
+**Hosted version:** [https://antaunbobby-landcover-detective.hf.space](https://antaunbobby-landcover-detective.hf.space). The commands below run the same app locally.
 `app/demo.py` loads the two trained checkpoints and compares them on any satellite image: side-by-side segmentation maps,
 a map of where the models disagree, per-class pixel share, an optional score against a LoveDA mask, and a
 plain-language mode for non-specialists.
